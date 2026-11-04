@@ -1,3 +1,8 @@
+- name: Upload APK Artifact
+  uses: actions/upload-artifact@v4
+  with:
+    name: app-release
+    path: app/build/outputs/apk/release/app-release.apk # (تأكد من مسار ملف الـ APK حسب مشروعك)
 #name: Build Android APK
 
 on:
