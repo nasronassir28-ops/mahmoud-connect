@@ -1,3 +1,29 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # (هنا توجد خطوات بناء وتثبيت الحزم الخاصة بتطبيقك مثل Node.js أو Bubblewrap)
+      - name: Build App
+        run: |
+          # الأوامر الخاصة بإنشاء التطبيق هنا
+          bubblewrap build
+
+      # <-- أضف هذا الجزء في نهاية الخطوات تماماً للتحميل -->
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: app-release
+          path: |
+            *.apk
+            app/build/outputs/apk/release/*.apk
 nname: Build Android APK
 
 on:
