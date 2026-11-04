@@ -1,0 +1,620 @@
+# ملف واحد يبني تطبيق أندرويد (غلاف أصلي لموقعك) على GitHub Actions
+# الاستخدام: Actions ثم Build Android APK ثم Run workflow ثم أدخل الحقول الثلاثة
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: 'اسم التطبيق (يظهر تحت الأيقونة)'
+        required: true
+        default: 'Mahmoud chat'
+      app_url:
+        description: 'رابط موقعك على Netlify (يبدأ بـ https)'
+        required: true
+        default: 'https://harmonious-cheesecake-68491d.netlify.app'
+      app_id:
+        description: 'معرّف الحزمة (أحرف إنجليزية صغيرة ونقطتان على الأقل)'
+        required: true
+        default: 'com.mahmoud.chatapp'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      APP_NAME: ${{ inputs.app_name }}
+      APP_URL: ${{ inputs.app_url }}
+      APP_ID: ${{ inputs.app_id }}
+    steps:
+      - name: Create project files
+        run: |
+          mkdir -p app/src/main/java/com/chatapp app/src/main/res/values app/src/main/res/drawable app/src/main/res/mipmap-xxxhdpi
+          cat > settings.gradle <<'EOF'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "ChatApps"
+          include ':app'
+          EOF
+          cat > build.gradle <<'EOF'
+          plugins {
+              id 'com.android.application' version '8.5.2' apply false
+          }
+          EOF
+          cat > gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx2g -Dfile.encoding=UTF-8
+          EOF
+          cat > app/build.gradle <<'EOF'
+          plugins {
+              id 'com.android.application'
+          }
+
+          android {
+              namespace 'com.chatapp'
+              compileSdk 34
+
+              defaultConfig {
+                  applicationId System.getenv('APP_ID')
+                  minSdk 24
+                  targetSdk 34
+                  versionCode 1
+                  versionName '1.0'
+                  resValue 'string', 'app_name', System.getenv('APP_NAME')
+                  buildConfigField 'String', 'APP_URL', "\"" + System.getenv('APP_URL') + "\""
+              }
+
+              buildFeatures {
+                  buildConfig true
+              }
+
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
+              }
+          }
+          EOF
+          cat > app/src/main/AndroidManifest.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+              <uses-permission android:name="android.permission.INTERNET" />
+              <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+              <uses-permission android:name="android.permission.CAMERA" />
+              <uses-permission android:name="android.permission.RECORD_AUDIO" />
+              <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+              <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+              <uses-permission android:name="android.permission.VIBRATE" />
+
+              <uses-feature android:name="android.hardware.camera" android:required="false" />
+              <uses-feature android:name="android.hardware.microphone" android:required="false" />
+
+              <application
+                  android:label="@string/app_name"
+                  android:icon="@mipmap/ic_launcher"
+                  android:roundIcon="@mipmap/ic_launcher"
+                  android:allowBackup="false"
+                  android:supportsRtl="true"
+                  android:usesCleartextTraffic="false"
+                  android:theme="@style/AppTheme">
+
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:launchMode="singleTask"
+                      android:windowSoftInputMode="adjustResize"
+                      android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|keyboard|uiMode">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+          cat > app/src/main/res/values/styles.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <style name="AppTheme" parent="@android:style/Theme.Material.Light.NoActionBar">
+                  <item name="android:windowBackground">@android:color/white</item>
+                  <item name="android:statusBarColor">@android:color/white</item>
+                  <item name="android:navigationBarColor">@android:color/white</item>
+                  <item name="android:windowLightStatusBar">true</item>
+                  <item name="android:windowLightNavigationBar">true</item>
+              </style>
+          </resources>
+          EOF
+          cat > app/src/main/res/drawable/ic_notif.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="24dp"
+              android:height="24dp"
+              android:viewportWidth="24"
+              android:viewportHeight="24">
+              <path
+                  android:fillColor="#FFFFFFFF"
+                  android:pathData="M20,2H4C2.9,2 2,2.9 2,4v18l4,-4h14c1.1,0 2,-0.9 2,-2V4C22,2.9 21.1,2 20,2z" />
+          </vector>
+          EOF
+          cat > app/src/main/java/com/chatapp/MainActivity.java <<'EOF'
+          package com.chatapp;
+
+          import android.Manifest;
+          import android.app.Activity;
+          import android.app.AlertDialog;
+          import android.app.Notification;
+          import android.app.NotificationChannel;
+          import android.app.NotificationManager;
+          import android.app.PendingIntent;
+          import android.content.ContentValues;
+          import android.content.Context;
+          import android.content.Intent;
+          import android.content.pm.PackageManager;
+          import android.graphics.BitmapFactory;
+          import android.media.AudioManager;
+          import android.net.Uri;
+          import android.os.Build;
+          import android.os.Bundle;
+          import android.os.Environment;
+          import android.provider.MediaStore;
+          import android.util.Base64;
+          import android.webkit.JavascriptInterface;
+          import android.webkit.JsResult;
+          import android.webkit.PermissionRequest;
+          import android.webkit.ValueCallback;
+          import android.webkit.WebChromeClient;
+          import android.webkit.WebResourceRequest;
+          import android.webkit.WebSettings;
+          import android.webkit.WebView;
+          import android.webkit.WebViewClient;
+          import android.widget.Toast;
+
+          import java.io.File;
+          import java.io.FileOutputStream;
+          import java.io.OutputStream;
+          import java.util.ArrayList;
+          import java.util.List;
+
+          public class MainActivity extends Activity {
+
+              private static final int REQ_FILE = 101;
+              private static final int REQ_START = 102;
+              private static final int REQ_WEB = 103;
+              private static final String CHANNEL = "messages";
+
+              private WebView web;
+              private ValueCallback<Uri[]> filePathCallback;
+              private PermissionRequest pendingWebPermission;
+              private AudioManager audio;
+              private int prevAudioMode = AudioManager.MODE_NORMAL;
+              private String appUrl;
+
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  appUrl = BuildConfig.APP_URL;
+                  audio = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+                  createNotificationChannel();
+
+                  web = new WebView(this);
+                  setContentView(web);
+                  configureWebView();
+                  requestStartupPermissions();
+
+                  String hash = hashFromIntent(getIntent());
+                  web.loadUrl(appUrl + (hash != null ? "#" + hash : ""));
+              }
+
+              private void configureWebView() {
+                  WebSettings s = web.getSettings();
+                  s.setJavaScriptEnabled(true);
+                  s.setDomStorageEnabled(true);
+                  s.setDatabaseEnabled(true);
+                  s.setMediaPlaybackRequiresUserGesture(false);
+                  s.setAllowFileAccess(false);
+                  s.setAllowContentAccess(true);
+                  s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+                  s.setSupportMultipleWindows(false);
+
+                  web.addJavascriptInterface(new Bridge(), "NativeBridge");
+
+                  web.setWebViewClient(new WebViewClient() {
+                      @Override
+                      public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                          Uri u = request.getUrl();
+                          String host = u.getHost();
+                          String base = Uri.parse(appUrl).getHost();
+                          if (host != null && base != null && (host.equals(base)
+                                  || host.endsWith("firebaseapp.com")
+                                  || host.endsWith("googleapis.com")
+                                  || host.endsWith("gstatic.com"))) {
+                              return false;
+                          }
+                          try {
+                              startActivity(new Intent(Intent.ACTION_VIEW, u));
+                          } catch (Exception ignored) {
+                          }
+                          return true;
+                      }
+                  });
+
+                  web.setWebChromeClient(new WebChromeClient() {
+                      @Override
+                      public void onPermissionRequest(final PermissionRequest request) {
+                          runOnUiThread(() -> handleWebPermission(request));
+                      }
+
+                      @Override
+                      public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> callback, FileChooserParams params) {
+                          if (filePathCallback != null) {
+                              filePathCallback.onReceiveValue(null);
+                          }
+                          filePathCallback = callback;
+                          try {
+                              startActivityForResult(params.createIntent(), REQ_FILE);
+                          } catch (Exception e) {
+                              filePathCallback = null;
+                              callback.onReceiveValue(null);
+                              return false;
+                          }
+                          return true;
+                      }
+
+                      @Override
+                      public boolean onJsAlert(WebView view, String url, String message, final JsResult result) {
+                          new AlertDialog.Builder(MainActivity.this)
+                                  .setMessage(message)
+                                  .setPositiveButton("حسناً", (d, w) -> result.confirm())
+                                  .setOnCancelListener(d -> result.cancel())
+                                  .show();
+                          return true;
+                      }
+
+                      @Override
+                      public boolean onJsConfirm(WebView view, String url, String message, final JsResult result) {
+                          new AlertDialog.Builder(MainActivity.this)
+                                  .setMessage(message)
+                                  .setPositiveButton("موافق", (d, w) -> result.confirm())
+                                  .setNegativeButton("إلغاء", (d, w) -> result.cancel())
+                                  .setOnCancelListener(d -> result.cancel())
+                                  .show();
+                          return true;
+                      }
+                  });
+              }
+
+              /* ---------- الأذونات ---------- */
+
+              private boolean has(String permission) {
+                  return checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED;
+              }
+
+              private void requestStartupPermissions() {
+                  List<String> need = new ArrayList<>();
+                  if (!has(Manifest.permission.RECORD_AUDIO)) need.add(Manifest.permission.RECORD_AUDIO);
+                  if (!has(Manifest.permission.CAMERA)) need.add(Manifest.permission.CAMERA);
+                  if (Build.VERSION.SDK_INT >= 33 && !has(Manifest.permission.POST_NOTIFICATIONS)) {
+                      need.add(Manifest.permission.POST_NOTIFICATIONS);
+                  }
+                  if (!need.isEmpty()) {
+                      requestPermissions(need.toArray(new String[0]), REQ_START);
+                  }
+              }
+
+              private void handleWebPermission(PermissionRequest request) {
+                  String host = request.getOrigin() != null ? request.getOrigin().getHost() : null;
+                  String base = Uri.parse(appUrl).getHost();
+                  if (host == null || base == null || !host.equals(base)) {
+                      request.deny();
+                      return;
+                  }
+                  List<String> need = new ArrayList<>();
+                  for (String r : request.getResources()) {
+                      if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(r) && !has(Manifest.permission.RECORD_AUDIO)) {
+                          need.add(Manifest.permission.RECORD_AUDIO);
+                      }
+                      if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(r) && !has(Manifest.permission.CAMERA)) {
+                          need.add(Manifest.permission.CAMERA);
+                      }
+                  }
+                  if (need.isEmpty()) {
+                      request.grant(request.getResources());
+                      return;
+                  }
+                  pendingWebPermission = request;
+                  requestPermissions(need.toArray(new String[0]), REQ_WEB);
+              }
+
+              @Override
+              public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+                  super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+                  if (requestCode == REQ_WEB && pendingWebPermission != null) {
+                      boolean ok = grantResults.length > 0;
+                      for (int r : grantResults) {
+                          if (r != PackageManager.PERMISSION_GRANTED) ok = false;
+                      }
+                      if (ok) pendingWebPermission.grant(pendingWebPermission.getResources());
+                      else pendingWebPermission.deny();
+                      pendingWebPermission = null;
+                  }
+              }
+
+              /* ---------- اختيار الملفات ---------- */
+
+              @Override
+              protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+                  if (requestCode == REQ_FILE) {
+                      if (filePathCallback == null) return;
+                      Uri[] results = WebChromeClient.FileChooserParams.parseResult(resultCode, data);
+                      filePathCallback.onReceiveValue(results);
+                      filePathCallback = null;
+                      return;
+                  }
+                  super.onActivityResult(requestCode, resultCode, data);
+              }
+
+              /* ---------- الإشعارات والتنقل ---------- */
+
+              private void createNotificationChannel() {
+                  if (Build.VERSION.SDK_INT >= 26) {
+                      NotificationChannel ch = new NotificationChannel(CHANNEL, "الرسائل", NotificationManager.IMPORTANCE_HIGH);
+                      NotificationManager nm = getSystemService(NotificationManager.class);
+                      if (nm != null) nm.createNotificationChannel(ch);
+                  }
+              }
+
+              private String hashFromIntent(Intent intent) {
+                  if (intent == null) return null;
+                  String h = intent.getStringExtra("hash");
+                  if (h != null && h.matches("[A-Za-z0-9/%_.~-]{1,300}")) return h;
+                  return null;
+              }
+
+              @Override
+              protected void onNewIntent(Intent intent) {
+                  super.onNewIntent(intent);
+                  setIntent(intent);
+                  String hash = hashFromIntent(intent);
+                  if (hash != null && web != null) {
+                      web.evaluateJavascript("location.hash='" + hash + "'", null);
+                  }
+              }
+
+              @Override
+              public void onBackPressed() {
+                  if (web != null && web.canGoBack()) web.goBack();
+                  else super.onBackPressed();
+              }
+
+              @Override
+              protected void onDestroy() {
+                  if (web != null) {
+                      setCallMode(false);
+                      web.destroy();
+                  }
+                  super.onDestroy();
+              }
+
+              private void toast(final String msg) {
+                  runOnUiThread(() -> Toast.makeText(MainActivity.this, msg, Toast.LENGTH_LONG).show());
+              }
+
+              /* ---------- الصوت: السماعة الأذنية أو المكبر ---------- */
+
+              private boolean inCall = false;
+
+              private void setCallMode(boolean on) {
+                  if (audio == null) return;
+                  if (on && !inCall) {
+                      prevAudioMode = audio.getMode();
+                      audio.setMode(AudioManager.MODE_IN_COMMUNICATION);
+                      audio.setSpeakerphoneOn(false);
+                      inCall = true;
+                  } else if (!on && inCall) {
+                      audio.setSpeakerphoneOn(false);
+                      audio.setMode(prevAudioMode);
+                      inCall = false;
+                  }
+              }
+
+              /* ---------- حفظ الملفات في التنزيلات ---------- */
+
+              private Uri saveToDownloads(String name, String mime, String b64) throws Exception {
+                  byte[] bytes = Base64.decode(b64, Base64.DEFAULT);
+                  String fname = (name == null || name.isEmpty()) ? "file" : name.replaceAll("[\\\\/:*?\"<>|]", "_");
+                  String type = (mime == null || mime.isEmpty()) ? "application/octet-stream" : mime;
+                  if (Build.VERSION.SDK_INT >= 29) {
+                      ContentValues v = new ContentValues();
+                      v.put(MediaStore.Downloads.DISPLAY_NAME, fname);
+                      v.put(MediaStore.Downloads.MIME_TYPE, type);
+                      v.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
+                      Uri uri = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, v);
+                      if (uri == null) throw new Exception("insert failed");
+                      OutputStream os = getContentResolver().openOutputStream(uri);
+                      if (os == null) throw new Exception("open failed");
+                      try {
+                          os.write(bytes);
+                      } finally {
+                          os.close();
+                      }
+                      return uri;
+                  }
+                  File dir = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
+                  if (dir == null) throw new Exception("no dir");
+                  dir.mkdirs();
+                  File f = new File(dir, fname);
+                  OutputStream os = new FileOutputStream(f);
+                  try {
+                      os.write(bytes);
+                  } finally {
+                      os.close();
+                  }
+                  return null;
+              }
+
+              /* ---------- الجسر بين الموقع والتطبيق ---------- */
+
+              private class Bridge {
+                  @JavascriptInterface
+                  public boolean isNative() {
+                      return true;
+                  }
+
+                  @JavascriptInterface
+                  public void saveFile(String name, String mime, String b64) {
+                      try {
+                          saveToDownloads(name, mime, b64);
+                          toast("تم الحفظ في مجلد التنزيلات");
+                      } catch (Exception e) {
+                          toast("تعذّر حفظ الملف");
+                      }
+                  }
+
+                  @JavascriptInterface
+                  public void shareFile(String name, String mime, String b64) {
+                      try {
+                          final Uri uri = saveToDownloads(name, mime, b64);
+                          if (uri == null) {
+                              toast("تم الحفظ. المشاركة تتطلب أندرويد 10 أو أحدث");
+                              return;
+                          }
+                          final String type = (mime == null || mime.isEmpty()) ? "*/*" : mime;
+                          final String title = name == null ? "" : name;
+                          runOnUiThread(() -> {
+                              Intent send = new Intent(Intent.ACTION_SEND);
+                              send.setType(type);
+                              send.putExtra(Intent.EXTRA_STREAM, uri);
+                              send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                              startActivity(Intent.createChooser(send, title));
+                          });
+                      } catch (Exception e) {
+                          toast("تعذّرت المشاركة");
+                      }
+                  }
+
+                  @JavascriptInterface
+                  public void notifyMsg(String title, String body, String hash) {
+                      try {
+                          Intent i = new Intent(MainActivity.this, MainActivity.class);
+                          i.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                          i.putExtra("hash", hash);
+                          int id = (int) (System.currentTimeMillis() / 1000);
+                          PendingIntent pi = PendingIntent.getActivity(MainActivity.this, id, i,
+                                  PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+                          Notification.Builder nb = Build.VERSION.SDK_INT >= 26
+                                  ? new Notification.Builder(MainActivity.this, CHANNEL)
+                                  : new Notification.Builder(MainActivity.this);
+                          nb.setSmallIcon(R.drawable.ic_notif)
+                                  .setLargeIcon(BitmapFactory.decodeResource(getResources(), R.mipmap.ic_launcher))
+                                  .setContentTitle(title)
+                                  .setContentText(body)
+                                  .setAutoCancel(true)
+                                  .setContentIntent(pi);
+                          NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+                          if (nm != null) nm.notify(id, nb.build());
+                      } catch (Exception ignored) {
+                      }
+                  }
+
+                  @JavascriptInterface
+                  public void setCallMode(final boolean on) {
+                      runOnUiThread(() -> MainActivity.this.setCallMode(on));
+                  }
+
+                  @JavascriptInterface
+                  public void setSpeaker(final boolean on) {
+                      runOnUiThread(() -> {
+                          if (audio != null) audio.setSpeakerphoneOn(on);
+                      });
+                  }
+              }
+          }
+          EOF
+          base64 -d > app/src/main/res/mipmap-xxxhdpi/ic_launcher.png <<'EOF'
+          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
+          EOF
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Accept Android licenses
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+
+      - name: Build APK
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: app/build/outputs/apk/debug/*.apk
